@@ -1,0 +1,58 @@
+# Self-hosted Predictive Maintenance stack: Postgres + backend (Express/Prisma/
+# Socket.IO) + frontend (Vite build served by nginx, proxying /api and /socket.io).
+#
+#   cp .env.example .env    # optional: override credentials / public URL
+#   docker compose up -d --build
+#   open http://localhost:8080
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-predictive_maintenance}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-predictive_maintenance}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      NODE_ENV: production
+      PORT: '4000'
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-predictive_maintenance}?schema=public
+      # Origin the browser loads from — must match the public frontend URL so the
+      # Socket.IO handshake is accepted.
+      CORS_ORIGIN: ${PUBLIC_URL:-http://localhost:8080}
+      SIMULATOR_ENABLED: 'true'
+      SIMULATOR_INTERVAL_MS: '1000'
+      SIMULATOR_ANOMALY_PROBABILITY: '0.08'
+      SIMULATOR_INGESTION_URL: http://localhost:4000/api/telemetry
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Same-origin: the browser talks to nginx, which proxies to the backend.
+        VITE_API_BASE_URL: /api
+        VITE_SOCKET_URL: /
+    ports:
+      - '${PUBLIC_PORT:-8080}:80'
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

@@ -1,0 +1,147 @@
+generator client {
+  provider      = "prisma-client-js"
+  // "native" covers local development; the debian target matches the
+  // node:20-slim (Debian, OpenSSL 3.0) runtime used by the Docker image.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DeviceType {
+  PUMP
+  MOTOR
+  COMPRESSOR
+  GENERATOR
+  CONVEYOR
+  TURBINE
+  SENSOR
+  OTHER
+}
+
+enum DeviceStatus {
+  ONLINE
+  OFFLINE
+  WARNING
+  CRITICAL
+  MAINTENANCE
+  DECOMMISSIONED
+}
+
+enum TelemetryMetric {
+  TEMPERATURE
+  VIBRATION
+  PRESSURE
+  HUMIDITY
+  VOLTAGE
+  CURRENT
+  RPM
+  POWER
+  NOISE
+  OTHER
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  DISMISSED
+}
+
+enum AlertHistoryAction {
+  CREATED
+  ACKNOWLEDGED
+  STATUS_CHANGED
+  SEVERITY_CHANGED
+  UPDATED
+  RESOLVED
+  DISMISSED
+}
+
+model Device {
+  id          String       @id @default(uuid())
+  name        String
+  type        DeviceType
+  location    String
+  healthScore Int          @default(100)
+  status      DeviceStatus @default(ONLINE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  telemetry Telemetry[]
+  alerts    Alert[]
+
+  @@index([status])
+  @@index([type])
+  @@index([location])
+  @@map("devices")
+}
+
+model Telemetry {
+  id         String          @id @default(uuid())
+  deviceId   String
+  metric     TelemetryMetric
+  value      Decimal         @db.Decimal(18, 6)
+  timestamp  DateTime
+  receivedAt DateTime        @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, metric, timestamp])
+  @@index([deviceId, metric, timestamp(sort: Desc)])
+  @@index([deviceId, timestamp(sort: Desc)])
+  @@index([metric, timestamp(sort: Desc)])
+  @@index([timestamp(sort: Desc)])
+  @@map("telemetry")
+}
+
+model Alert {
+  id              String          @id @default(uuid())
+  deviceId        String
+  metric          TelemetryMetric?
+  ruleKey         String?
+  severity        AlertSeverity
+  confidenceScore Int?
+  title           String
+  description     String
+  reason          String?
+  recommendation  String?
+  status          AlertStatus     @default(OPEN)
+  createdAt       DateTime        @default(now())
+  resolvedAt      DateTime?
+
+  device  Device         @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  history AlertHistory[]
+
+  @@index([deviceId, metric, ruleKey, status])
+  @@index([deviceId, status, createdAt(sort: Desc)])
+  @@index([severity, status])
+  @@index([status, createdAt(sort: Desc)])
+  @@map("alerts")
+}
+
+model AlertHistory {
+  id          String             @id @default(uuid())
+  alertId     String
+  fromStatus  AlertStatus?
+  toStatus    AlertStatus?
+  fromSeverity AlertSeverity?
+  toSeverity   AlertSeverity?
+  action      AlertHistoryAction
+  note        String?
+  createdAt   DateTime           @default(now())
+
+  alert Alert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@index([alertId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@map("alert_history")
+}
