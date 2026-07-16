@@ -1,0 +1,46 @@
+# Single-image production stack: Postgres + one app container that serves the
+# frontend, REST API, and Socket.IO on one URL. Ideal for a VPS / any Docker host.
+#
+#   cp .env.example .env    # optional; set PUBLIC_URL for a domain
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   open http://localhost:8080
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-predictive_maintenance}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-predictive_maintenance}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: '4000'
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-predictive_maintenance}?schema=public
+      # Same-origin app, so CORS is not exercised; keep it aligned with the public URL anyway.
+      CORS_ORIGIN: ${PUBLIC_URL:-http://localhost:8080}
+      SIMULATOR_ENABLED: 'true'
+      SIMULATOR_INTERVAL_MS: '1000'
+      SIMULATOR_ANOMALY_PROBABILITY: '0.08'
+      SIMULATOR_INGESTION_URL: http://localhost:4000/api/telemetry
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '${PUBLIC_PORT:-8080}:4000'
+    restart: unless-stopped
+
+volumes:
+  pgdata:

@@ -109,47 +109,51 @@ image and is applied on the next deploy.
 
 ## Cloud deployment (permanent public link)
 
-Netlify and Vercel can only host the **frontend** (static site). The backend needs
-an always-on server (Socket.IO WebSockets + telemetry simulator) and PostgreSQL, so
-it goes on a host that runs servers — **Render** (free tier) works well.
+A public URL requires the container to run on a host that is always on and reachable
+from the internet. Two supported paths, both using the production Docker image.
 
-### 1. Backend + database → Render (Blueprint)
+### Option A — Single-image on Render (recommended: one URL, all devices)
 
-1. Push this repo to GitHub (already done).
+The root [`Dockerfile`](Dockerfile) builds **one image** that serves the frontend, REST
+API, and Socket.IO on a single origin (no CORS, WebSockets same-origin).
+
+1. Push this repo to GitHub (done).
 2. In Render: **New + → Blueprint**, connect the repo. Render reads [`render.yaml`](render.yaml)
-   and provisions the Postgres database + the API web service (Docker).
-3. When prompted, set **`CORS_ORIGIN`** to your frontend URL (fill it in after step 2,
-   then redeploy — e.g. `https://your-app.vercel.app`).
-4. Note the API URL, e.g. `https://predictive-maintenance-api.onrender.com`.
+   and provisions the Postgres database + one Docker web service.
+3. Click **Apply**. When it finishes, Render gives you a public URL like
+   `https://predictive-maintenance.onrender.com` — that single link is the whole app,
+   and it works on any device.
 
-> Free Render web services sleep after ~15 min idle (first request then cold-starts
-> in ~50s), and free Postgres expires after ~90 days — fine for a demo/submission.
+> Free Render web services sleep after ~15 min idle (first hit then cold-starts in
+> ~50s), and free Postgres expires after ~90 days — fine for a demo/submission.
 
-### 2. Frontend → Vercel or Netlify
+### Option B — Single-image on any VPS / Docker host
 
-Both build from the `frontend/` workspace. Set two environment variables to point at
-the Render API (from step 4):
+On a server with a public IP (DigitalOcean, Hetzner, EC2, etc.):
+
+```bash
+git clone https://github.com/TanmayGupta17/predictive-maintenance.git
+cd predictive-maintenance
+echo "PUBLIC_URL=https://your-domain" > .env      # or use the server IP
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+This runs Postgres + the single app container. Point your domain/`:8080` at it, and put
+it behind a TLS proxy (Caddy/Traefik/nginx) for HTTPS + WebSocket upgrade headers.
+
+### Alternative — split hosting (Vercel/Netlify frontend + Render backend)
+
+If you specifically want the frontend on Vercel/Netlify, deploy the backend on Render
+(the same Docker service serves the API; the built-in static frontend is simply unused),
+then build the frontend from the `frontend/` workspace with:
 
 | Variable | Value |
 | --- | --- |
 | `VITE_API_BASE_URL` | `https://<your-api>.onrender.com/api` |
 | `VITE_SOCKET_URL` | `https://<your-api>.onrender.com` |
 
-**Vercel:** New Project → import the repo → set **Root Directory = `frontend`** →
-add the two env vars → Deploy. ([`frontend/vercel.json`](frontend/vercel.json) handles the
-SPA fallback.)
-
-**Netlify:** New site from Git → the root [`netlify.toml`](netlify.toml) sets base `frontend`,
-build `npm run build`, publish `dist`, and the SPA redirect → add the two env vars → Deploy.
-
-### 3. Close the loop
-
-Set the backend's `CORS_ORIGIN` (on Render) to the exact frontend URL from step 2 and
-redeploy the API. The dashboard is now live at your Vercel/Netlify link.
-
-> Prefer one platform? Render can also host the frontend as a static site (build
-> `cd frontend && npm ci && npm run build`, publish `frontend/dist`), avoiding a second
-> account — then only Render is needed.
+Set the backend `CORS_ORIGIN` to the frontend URL. [`frontend/vercel.json`](frontend/vercel.json)
+and root [`netlify.toml`](netlify.toml) provide the SPA build config.
 
 ## Troubleshooting
 
