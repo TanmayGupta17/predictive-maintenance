@@ -28,8 +28,9 @@ services:
           property: connectionString
       - key: SIMULATOR_ENABLED
         value: 'true'
+      # 5s cadence keeps the free-tier database comfortable (1s saturated it).
       - key: SIMULATOR_INTERVAL_MS
-        value: '1000'
+        value: '5000'
       - key: SIMULATOR_ANOMALY_PROBABILITY
         value: '0.08'
       - key: SIMULATOR_INGESTION_URL
