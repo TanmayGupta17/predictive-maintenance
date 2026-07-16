@@ -1,0 +1,41 @@
+# Render Blueprint: managed PostgreSQL + backend API (Express + Prisma + Socket.IO
+# + telemetry simulator). Render runs the always-on parts that Vercel/Netlify can't
+# (WebSockets, background loop, database). The frontend deploys to Vercel/Netlify
+# and points at this API — see DEPLOYMENT.md.
+#
+# Deploy: Render dashboard -> New + -> Blueprint -> connect this repo -> Apply.
+
+databases:
+  - name: predictive-maintenance-db
+    databaseName: predictive_maintenance
+    plan: free
+
+services:
+  - type: web
+    name: predictive-maintenance-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: '4000'
+      - key: DATABASE_URL
+        fromDatabase:
+          name: predictive-maintenance-db
+          property: connectionString
+      # Set this to your live frontend URL (e.g. https://your-app.vercel.app) so the
+      # browser and the Socket.IO handshake are accepted. Render will prompt for it.
+      - key: CORS_ORIGIN
+        sync: false
+      - key: SIMULATOR_ENABLED
+        value: 'true'
+      - key: SIMULATOR_INTERVAL_MS
+        value: '1000'
+      - key: SIMULATOR_ANOMALY_PROBABILITY
+        value: '0.08'
+      - key: SIMULATOR_INGESTION_URL
+        value: http://localhost:4000/api/telemetry

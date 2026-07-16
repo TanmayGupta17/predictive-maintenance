@@ -107,6 +107,50 @@ image and is applied on the next deploy.
 - Fleet data: `curl http://localhost:8080/api/dashboard`.
 - Frontend: `curl -I http://localhost:8080/` → `200`.
 
+## Cloud deployment (permanent public link)
+
+Netlify and Vercel can only host the **frontend** (static site). The backend needs
+an always-on server (Socket.IO WebSockets + telemetry simulator) and PostgreSQL, so
+it goes on a host that runs servers — **Render** (free tier) works well.
+
+### 1. Backend + database → Render (Blueprint)
+
+1. Push this repo to GitHub (already done).
+2. In Render: **New + → Blueprint**, connect the repo. Render reads [`render.yaml`](render.yaml)
+   and provisions the Postgres database + the API web service (Docker).
+3. When prompted, set **`CORS_ORIGIN`** to your frontend URL (fill it in after step 2,
+   then redeploy — e.g. `https://your-app.vercel.app`).
+4. Note the API URL, e.g. `https://predictive-maintenance-api.onrender.com`.
+
+> Free Render web services sleep after ~15 min idle (first request then cold-starts
+> in ~50s), and free Postgres expires after ~90 days — fine for a demo/submission.
+
+### 2. Frontend → Vercel or Netlify
+
+Both build from the `frontend/` workspace. Set two environment variables to point at
+the Render API (from step 4):
+
+| Variable | Value |
+| --- | --- |
+| `VITE_API_BASE_URL` | `https://<your-api>.onrender.com/api` |
+| `VITE_SOCKET_URL` | `https://<your-api>.onrender.com` |
+
+**Vercel:** New Project → import the repo → set **Root Directory = `frontend`** →
+add the two env vars → Deploy. ([`frontend/vercel.json`](frontend/vercel.json) handles the
+SPA fallback.)
+
+**Netlify:** New site from Git → the root [`netlify.toml`](netlify.toml) sets base `frontend`,
+build `npm run build`, publish `dist`, and the SPA redirect → add the two env vars → Deploy.
+
+### 3. Close the loop
+
+Set the backend's `CORS_ORIGIN` (on Render) to the exact frontend URL from step 2 and
+redeploy the API. The dashboard is now live at your Vercel/Netlify link.
+
+> Prefer one platform? Render can also host the frontend as a static site (build
+> `cd frontend && npm ci && npm run build`, publish `frontend/dist`), avoiding a second
+> account — then only Render is needed.
+
 ## Troubleshooting
 
 - **Backend restarts / "migrate deploy" errors** — Postgres wasn't ready. The

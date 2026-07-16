@@ -1,0 +1,13 @@
+# Netlify config for the frontend (Vite SPA). Set the base to the frontend
+# workspace and add a SPA fallback. Configure VITE_API_BASE_URL and
+# VITE_SOCKET_URL (pointing at the Render backend) in Netlify's UI.
+
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
